@@ -5,11 +5,12 @@ on:
     branches: [ "master", "main" ]
   pull_request:
     branches: [ "master", "main" ]
+  workflow_dispatch: 
 
 env:
   REGISTRY: ghcr.io
-  
   IMAGE_NAME: ${{ github.repository }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-push:
@@ -22,6 +23,14 @@ jobs:
       - name: Descargar código del repositorio
         uses: actions/checkout@v4
 
+      - name: Obtener versión oficial de Telegram Bot API
+        id: telegram_version
+        run: |
+          
+          REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tdlib/telegram-bot-api/master/CMakeLists.txt | grep -oP 'project\(TelegramBotApi VERSION \K[0-9.]+')
+          echo "VERSION=$REMOTE_VERSION" >> $GITHUB_OUTPUT
+          echo "Versión detectada: $REMOTE_VERSION"
+
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -30,25 +39,28 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generar etiquetas y metadatos (Tags)
+      - name: Generar etiquetas y metadatos
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            latest
+            
+            type=raw,value=${{ steps.telegram_version.outputs.VERSION }}
+            type=raw,value=latest
+            type=sha,format=short
 
       - name: Construir y subir imagen Docker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          
+         
+          build-args: |
+            TELEGRAM_BOT_API_VERSION=master
           cache-from: type=gha
           cache-to: type=gha,mode=max
